@@ -1,170 +1,104 @@
-SUMMARY
-================================================================================
-
-These files contain 1,000,209 anonymous ratings of approximately 3,900 movies 
-made by 6,040 MovieLens users who joined MovieLens in 2000.
-
-USAGE LICENSE
-================================================================================
-
-Neither the University of Minnesota nor any of the researchers
-involved can guarantee the correctness of the data, its suitability
-for any particular purpose, or the validity of results based on the
-use of the data set.  The data set may be used for any research
-purposes under the following conditions:
-
-     * The user may not state or imply any endorsement from the
-       University of Minnesota or the GroupLens Research Group.
-
-     * The user must acknowledge the use of the data set in
-       publications resulting from the use of the data set
-       (see below for citation information).
-
-     * The user may not redistribute the data without separate
-       permission.
-
-     * The user may not use this information for any commercial or
-       revenue-bearing purposes without first obtaining permission
-       from a faculty member of the GroupLens Research Project at the
-       University of Minnesota.
-
-If you have any further questions or comments, please contact GroupLens
-<grouplens-info@cs.umn.edu>. 
-
-CITATION
-================================================================================
-
-To acknowledge use of the dataset in publications, please cite the following
-paper:
-
-F. Maxwell Harper and Joseph A. Konstan. 2015. The MovieLens Datasets: History
-and Context. ACM Transactions on Interactive Intelligent Systems (TiiS) 5, 4,
-Article 19 (December 2015), 19 pages. DOI=http://dx.doi.org/10.1145/2827872
+┌─────────────────────────────────┐
+                        │           GRAPH SCHEMA          │
+                        └─────────────────────────────────┘
 
 
-ACKNOWLEDGEMENTS
-================================================================================
+   ┌──────────────────────┐          ┌──────────────────────┐
+   │        User          │          │        Movie         │
+   │──────────────────────│          │──────────────────────│
+   │  userId   : Integer  │          │  movieId  : Integer  │
+   │  gender   : String   │          │  title    : String   │
+   │  age      : Integer  │          │  year     : Integer  │
+   │  occupation: Integer │          │                      │
+   └──────────────────────┘          └──────────────────────┘
+              │                                │
+              │   [:RATED]                     │  [:HAS_GENRE]
+              │   {rating   : Integer (1-5)}   │
+              │   {timestamp: Integer (Unix)}  │
+              │                                ▼
+              │                      ┌──────────────────────┐
+              └─────────────────────►│        Genre         │
+                                     │──────────────────────│
+                                     │  name : String       │
+                                     │  e.g. "Action"       │
+                                     │       "Comedy"       │
+                                     │       "Drama"  ...   │
+                                     └──────────────────────┘
 
-Thanks to Shyong Lam and Jon Herlocker for cleaning up and generating the data
-set.
 
-FURTHER INFORMATION ABOUT THE GROUPLENS RESEARCH PROJECT
-================================================================================
+  Relationship directions:
 
-The GroupLens Research Project is a research group in the Department of 
-Computer Science and Engineering at the University of Minnesota. Members of 
-the GroupLens Research Project are involved in many research projects related 
-to the fields of information filtering, collaborative filtering, and 
-recommender systems. The project is lead by professors John Riedl and Joseph 
-Konstan. The project began to explore automated collaborative filtering in 
-1992, but is most well known for its world wide trial of an automated 
-collaborative filtering system for Usenet news in 1996. Since then the project 
-has expanded its scope to research overall information filtering solutions, 
-integrating in content-based methods as well as improving current collaborative 
-filtering technology.
+  (User) ──[:RATED {rating, timestamp}]──► (Movie)
+  (Movie) ──[:HAS_GENRE]──────────────────► (Genre)
 
-Further information on the GroupLens Research project, including research 
-publications, can be found at the following web site:
-        
-        http://www.grouplens.org/
 
-GroupLens Research currently operates a movie recommender based on 
-collaborative filtering:
+  Example traversal:
 
-        http://www.movielens.org/
+  (User #1) ──[RATED: 5]──► (Schindler's List)
+                                    │
+                             [HAS_GENRE]──► (Drama)
+                             [HAS_GENRE]──► (War)
 
-RATINGS FILE DESCRIPTION
-================================================================================
 
-All ratings are contained in the file "ratings.dat" and are in the
-following format:
+1. Які сутності стали вузлами, а які — ребрами? Чому?
+What became nodes and what became edges? Why?
 
-UserID::MovieID::Rating::Timestamp
+Nodes: User, Movie, Genre
 
-- UserIDs range between 1 and 6040 
-- MovieIDs range between 1 and 3952
-- Ratings are made on a 5-star scale (whole-star ratings only)
-- Timestamp is represented in seconds since the epoch as returned by time(2)
-- Each user has at least 20 ratings
+These three are independent entities — they exist and have meaning on their own, regardless of any relationship. A user exists even if they haven't rated anything yet. A movie exists even if no one has watched it. A genre like "Drama" exists as a concept independently.
 
-USERS FILE DESCRIPTION
-================================================================================
+Edges: RATED, HAS_GENRE
 
-User information is in the file "users.dat" and is in the following
-format:
+These represent relationships between entities, not entities themselves. A rating only exists in the context of a specific user rating a specific movie — it has no standalone identity. The same logic applies to HAS_GENRE: the connection between a movie and its genre is a fact about their relationship, not an independent thing.
 
-UserID::Gender::Age::Occupation::Zip-code
+The rule of thumb: if you can ask "how many of these exist on their own?" → it's a node. If it only makes sense as a connection between two things → it's an edge.
 
-All demographic information is provided voluntarily by the users and is
-not checked for accuracy.  Only users who have provided some demographic
-information are included in this data set.
+2. Оцінка користувача за фільм — це ребро (User)-[:RATED]->(Movie) чи окремий вузол (Rating)? Аргументуйте своє рішення. Це не риторичне запитання: в обох підходів є реальні trade-off-и.
+Is a rating an edge or a separate node?
 
-- Gender is denoted by a "M" for male and "F" for female
-- Age is chosen from the following ranges:
+Decision: edge — (User)-[:RATED {rating, timestamp}]->(Movie)
 
-	*  1:  "Under 18"
-	* 18:  "18-24"
-	* 25:  "25-34"
-	* 35:  "35-44"
-	* 45:  "45-49"
-	* 50:  "50-55"
-	* 56:  "56+"
+Arguments for edge (our choice):
 
-- Occupation is chosen from the following choices:
 
-	*  0:  "other" or not specified
-	*  1:  "academic/educator"
-	*  2:  "artist"
-	*  3:  "clerical/admin"
-	*  4:  "college/grad student"
-	*  5:  "customer service"
-	*  6:  "doctor/health care"
-	*  7:  "executive/managerial"
-	*  8:  "farmer"
-	*  9:  "homemaker"
-	* 10:  "K-12 student"
-	* 11:  "lawyer"
-	* 12:  "programmer"
-	* 13:  "retired"
-	* 14:  "sales/marketing"
-	* 15:  "scientist"
-	* 16:  "self-employed"
-	* 17:  "technician/engineer"
-	* 18:  "tradesman/craftsman"
-	* 19:  "unemployed"
-	* 20:  "writer"
+The most common queries are traversals: "what did this user rate?", "who rated this movie?", "find movies rated ≥4 by user X". These are all 1-hop traversals — extremely fast as edges.
+A rating has no identity outside the User↔Movie pair. There's no scenario where you query "give me rating #583291" — you always go through a user or a movie.
+Storage is more compact — no extra node, no extra two edges to connect it.
 
-MOVIES FILE DESCRIPTION
-================================================================================
 
-Movie information is in the file "movies.dat" and is in the following
-format:
+Arguments for a separate (Rating) node:
 
-MovieID::Title::Genres
 
-- Titles are identical to titles provided by the IMDB (including
-year of release)
-- Genres are pipe-separated and are selected from the following genres:
+If you needed to model complex rating metadata (e.g. multiple rating dimensions: acting, plot, visuals), a node accommodates that more naturally.
+If you wanted to query ratings independently — e.g. "find all 5-star ratings given between 2000 and 2001" — a node with its own index on timestamp might be faster.
+Easier to attach future relationships to a rating (e.g. (Rating)-[:FLAGGED_AS]->(Suspicious)).
 
-	* Action
-	* Adventure
-	* Animation
-	* Children's
-	* Comedy
-	* Crime
-	* Documentary
-	* Drama
-	* Fantasy
-	* Film-Noir
-	* Horror
-	* Musical
-	* Mystery
-	* Romance
-	* Sci-Fi
-	* Thriller
-	* War
-	* Western
 
-- Some MovieIDs do not correspond to a movie due to accidental duplicate
-entries and/or test entries
-- Movies are mostly entered by hand, so errors and inconsistencies may exist
+Conclusion: For this dataset, the edge model is the right trade-off. The rating properties {rating, timestamp} are simple scalars, and all realistic queries go through User or Movie. The performance benefit of direct traversal outweighs the flexibility of a rating node.
+
+3. Чому жанри фільму вигідніше зберігати як окремі вузли (Genre), а не як список у властивості вузла Movie?
+Why store genres as separate nodes, not a list property?
+
+If genres were stored as a list on the Movie node:
+
+// With list property — slow, no index possible on list contents
+MATCH (m:Movie)
+WHERE 'Thriller' IN m.genres
+RETURN m
+
+This forces a full scan of every Movie node, checking the list on each one. Neo4j cannot index inside a list property efficiently.
+
+With Genre as a separate node:
+
+cypher// With Genre node — instant lookup via index on Genre.name
+MATCH (g:Genre {name: 'Thriller'})<-[:HAS_GENRE]-(m:Movie)
+RETURN m
+
+Neo4j finds the single Genre {name: 'Thriller'} node in O(1) via index, then follows its incoming HAS_GENRE edges — only touching the relevant movies.
+
+Additional benefits of Genre nodes:
+
+
+Enables queries across genres: "find genres whose average rating > 4.0" becomes a simple aggregation.
+Genres become first-class citizens you can attach more data to (e.g. Genre {name, description, parentGenre}).
+The graph becomes more semantically rich — two movies sharing a Genre node are visibly connected in the graph, enabling genre-based community detection.
