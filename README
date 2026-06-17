@@ -39,66 +39,115 @@
                              [HAS_GENRE]──► (Drama)
                              [HAS_GENRE]──► (War)
 
-
+*** Part 1
 1. Які сутності стали вузлами, а які — ребрами? Чому?
-What became nodes and what became edges? Why?
-
-Nodes: User, Movie, Genre
-
-These three are independent entities — they exist and have meaning on their own, regardless of any relationship. A user exists even if they haven't rated anything yet. A movie exists even if no one has watched it. A genre like "Drama" exists as a concept independently.
-
-Edges: RATED, HAS_GENRE
-
-These represent relationships between entities, not entities themselves. A rating only exists in the context of a specific user rating a specific movie — it has no standalone identity. The same logic applies to HAS_GENRE: the connection between a movie and its genre is a fact about their relationship, not an independent thing.
-
-The rule of thumb: if you can ask "how many of these exist on their own?" → it's a node. If it only makes sense as a connection between two things → it's an edge.
-
-2. Оцінка користувача за фільм — це ребро (User)-[:RATED]->(Movie) чи окремий вузол (Rating)? Аргументуйте своє рішення. Це не риторичне запитання: в обох підходів є реальні trade-off-и.
-Is a rating an edge or a separate node?
-
-Decision: edge — (User)-[:RATED {rating, timestamp}]->(Movie)
-
-Arguments for edge (our choice):
+Вузли: User, Movie, Genre
+Я вибрала саме ці три як вузли, тому що вони є незалежними сутностями — вони існують і мають сенс самі по собі, незалежно від будь-яких зв'язків. Користувач існує навіть якщо він ще нічого не оцінив. Фільм існує навіть якщо його ніхто не переглянув. Жанр "Драма" існує як концепція незалежно від будь-чого.
+Ребра: RATED, HAS_GENRE
+Вони представляють зв'язки між сутностями, а не самі сутності. Оцінка існує лише в контексті конкретного користувача, який оцінює конкретний фільм — вона не має самостійної ідентичності. Та сама логіка стосується HAS_GENRE: зв'язок між фільмом і його жанром — це факт про їхні відносини, а не незалежна річ.
+Моє правило: якщо можна запитати "скільки таких існує самостійно?" → це вузол. Якщо це має сенс лише як зв'язок між двома речами → це ребро.
 
 
-The most common queries are traversals: "what did this user rate?", "who rated this movie?", "find movies rated ≥4 by user X". These are all 1-hop traversals — extremely fast as edges.
-A rating has no identity outside the User↔Movie pair. There's no scenario where you query "give me rating #583291" — you always go through a user or a movie.
-Storage is more compact — no extra node, no extra two edges to connect it.
+2. Оцінка користувача за фільм — це ребро (User)-[:RATED]->(Movie) чи окремий вузол (Rating)? Аргументуйте своє рішення. 
+Моє рішення: ребро — (User)-[:RATED {rating, timestamp}]->(Movie)
+Чому я обрала ребро:
+Найпоширеніші запити — це обходи графа: "що оцінив цей користувач?", "хто оцінив цей фільм?", "знайти фільми з оцінкою ≥4 від користувача X". Це все однокрокові обходи — надзвичайно швидкі як ребра.
+Оцінка не має ідентичності поза парою User↔Movie. Немає сценарію, де я запитую "дай мені оцінку #583291" — завжди йдемо через користувача або фільм. До того ж зберігання більш компактне — немає зайвого вузла і зайвих двох ребер для його підключення.
 
+Але є аргументи і для окремого вузла (Rating):
+Якби потрібно було моделювати складні метадані оцінки (наприклад, кілька вимірів: акторська гра, сюжет, візуалізація) — вузол підходить краще. Також якби потрібно запитувати оцінки незалежно — наприклад, "знайти всі оцінки 5 зірок між 2000 і 2001 роком" — вузол з власним індексом на timestamp міг би бути швидшим. І легше додавати майбутні зв'язки до оцінки.
 
-Arguments for a separate (Rating) node:
-
-
-If you needed to model complex rating metadata (e.g. multiple rating dimensions: acting, plot, visuals), a node accommodates that more naturally.
-If you wanted to query ratings independently — e.g. "find all 5-star ratings given between 2000 and 2001" — a node with its own index on timestamp might be faster.
-Easier to attach future relationships to a rating (e.g. (Rating)-[:FLAGGED_AS]->(Suspicious)).
-
-
-Conclusion: For this dataset, the edge model is the right trade-off. The rating properties {rating, timestamp} are simple scalars, and all realistic queries go through User or Movie. The performance benefit of direct traversal outweighs the flexibility of a rating node.
+ Для цього датасету модель з ребром — правильний вибір. Властивості {rating, timestamp} — прості скаляри, і всі реалістичні запити йдуть через User або Movie. Переваги прямого обходу переважують гнучкість вузла оцінки.
 
 3. Чому жанри фільму вигідніше зберігати як окремі вузли (Genre), а не як список у властивості вузла Movie?
-Why store genres as separate nodes, not a list property?
 
-If genres were stored as a list on the Movie node:
-
-// With list property — slow, no index possible on list contents
+Коли я спочатку думала про це, здавалося логічним просто зберегти жанри як список у властивості фільму. Але потім я зрозуміла проблему.
+Якби жанри зберігалися як список:
+cypher-- Повільно — Neo4j змушений перевіряти кожен вузол Movie
 MATCH (m:Movie)
 WHERE 'Thriller' IN m.genres
 RETURN m
 
-This forces a full scan of every Movie node, checking the list on each one. Neo4j cannot index inside a list property efficiently.
+Це змушує Neo4j робити повний скан кожного вузла Movie і перевіряти список на кожному. Neo4j не може ефективно індексувати вміст списку.
+З жанром як окремим вузлом:
 
-With Genre as a separate node:
-
-cypher// With Genre node — instant lookup via index on Genre.name
+cypher-- Швидко — миттєвий пошук через індекс
 MATCH (g:Genre {name: 'Thriller'})<-[:HAS_GENRE]-(m:Movie)
 RETURN m
 
-Neo4j finds the single Genre {name: 'Thriller'} node in O(1) via index, then follows its incoming HAS_GENRE edges — only touching the relevant movies.
+Neo4j знаходить єдиний вузол Genre {name: 'Thriller'} через індекс за O(1), а потім проходить лише по вхідних ребрах HAS_GENRE — торкаючись лише потрібних фільмів.
+Додаткові переваги вузлів Genre, які я помітила:
+Можна робити запити між жанрами: "знайти жанри із середньою оцінкою > 4.0" стає простою агрегацією. Жанри стають повноцінними сутностями, до яких можна додавати більше даних. І граф стає семантично багатшим — два фільми, що мають спільний вузол Genre, видимо пов'язані у графі, що дозволяє виявляти жанрові спільноти.
 
-Additional benefits of Genre nodes:
+*** Part 3
+1. Що означає довжина шляху в даному контексті?
+Довжина шляху — це кількість ребер (зв'язків) між двома вузлами у графі.
+У даному контексті ребро — це зв'язок RATED між користувачем (User) та фільмом (Movie).
+Довжина шляху показує, наскільки "близько" пов'язані два користувачі через спільно оцінені фільми.
+
+2. Один хоп — це один крок по ребру RATED, а значить — шлях довжини 2 означає, що два користувачі оцінили один і той самий фільм.
+Один хоп = один крок по ребру RATED.
+
+Шлях довжини 2 означає:
+(User A) --[RATED]--> (Movie) <--[RATED]-- (User B)
+
+Тобто два користувачі оцінили один і той самий фільм.
+Це найближчий можливий зв'язок між двома користувачами у цьому графі.
+У нашому випадку: User 1 та User 500 обидва оцінили Schindler's List (1993) → довжина шляху = 2.
+
+3. Як інтерпретувати шлях довжини 4? Довжини 6?
+Шлях довжини 4:
+
+(User A) --[RATED]--> (Movie 1) <--[RATED]-- (User C) --[RATED]--> (Movie 2) <--[RATED]-- (User B)
+
+Це означає, що User A та User B не мають спільного фільму, але обидва пов'язані через проміжного User C:
 
 
-Enables queries across genres: "find genres whose average rating > 4.0" becomes a simple aggregation.
-Genres become first-class citizens you can attach more data to (e.g. Genre {name, description, parentGenre}).
-The graph becomes more semantically rich — two movies sharing a Genre node are visibly connected in the graph, enabling genre-based community detection.
+User A і User C оцінили Movie 1
+User C і User B оцінили Movie 2
+
+
+Шлях довжини 6:
+
+(User A) --> (Movie 1) <-- (User C) --> (Movie 2) <-- (User D) --> (Movie 3) <-- (User B)
+
+Це означає, що між User A та User B є два проміжні користувачі (User C та User D):
+
+
+User A і User C оцінили Movie 1
+User C і User D оцінили Movie 2
+User D і User B оцінили Movie 3
+
+| Довжина шляху | Кількість спільних фільмів | Проміжні користувачі |
+|---------------|---------------------------|----------------------|
+| 2             | 1 спільний фільм          | 0                    |
+| 4             | немає спільних            | 1 проміжний user     |
+| 6             | немає спільних            | 2 проміжні users     |
+
+*** Part 4 — Виявлення супервузлів
+1. Які вузли виявилися супервузлами? Скільки у них зв'язків?
+Після запуску запитів я побачила, що найбільше зв'язків мають популярні фільми. Наприклад, American Beauty (1999) має аж 3428 зв'язків — це означає, що майже кожен користувач у датасеті оцінив цей фільм. Star Wars та Matrix теж виявились супервузлами з близько 2500-3000 зв'язків.
+Серед користувачів я помітила, що userId 4169 оцінив 2314 фільмів — це дуже активний користувач, який також створює супервузол.
+Але найбільш несподіваним відкриттям для мене стали жанрові вузли. Drama пов'язана з 1603 фільмами, Comedy — з 1200. Я не одразу подумала про жанри як про супервузли, але після аналізу стало очевидно, що вони — одні з найпроблемніших вузлів у графі.
+
+2. Чому запит через супервузол працює повільніше?
+Я думаю, що проблема в тому, що коли Neo4j знаходить супервузол, він змушений перебрати всі його ребра — навіть якщо нам потрібна лише невелика частина.
+Наприклад, якщо я шукаю "чи оцінив конкретний користувач American Beauty", Neo4j спочатку знаходить вузол фільму через індекс дуже швидко, але потім мусить переглянути всі 3428 зв'язків RATED, щоб знайти потрібного користувача. Індекс допомагає знайти вузол, але не вирішує проблему обходу тисяч ребер.
+Це схоже на те, якби ти шукав одне ім'я у телефонній книзі міста — знайти потрібну сторінку легко, але якщо на ній тисячі записів, перегляд займе час.
+
+3. Яку стратегію я б застосувала для цього датасету?
+Після того як я побачила, що Drama і Comedy — це справжні супервузли, я зрозуміла, що окремі вузли для жанрів — не найкраща ідея для цього датасету.
+Моє рішення: зберігати жанри як властивість фільму, а не як окремі вузли:
+cypher// Замість: (Movie)-[:HAS_GENRE]->(Genre {name: "Drama"})
+// Краще: Movie {title: "...", genres: ["Drama", "Romance"]}
+Це одразу прибирає 18 супервузлів жанрів і робить запити типу "знайти всі драми" значно швидшими, бо замість обходу тисяч ребер Neo4j просто фільтрує за властивістю.
+Для фільмів-супервузлів я б розглянула партиціонування рейтингів за роками, щоб не тримати тисячі RATED зв'язків на одному вузлі.
+Загалом цей аналіз показав мені, що структура графа має великий вплив на продуктивність — іноді інтуїтивна модель (жанр як окремий вузол) виявляється проблемною на реальних даних.
+
+*** Part 5
+1. Що означає високий PageRank для фільму?
+Спочатку я думала, що це просто "популярний фільм". Але після аналізу результатів я зрозуміла, що це не зовсім так.
+PageRank ≠ просто популярність.
+Наприклад, у наших результатах American Beauty (1999) отримав найвищий PageRank (9.66), хоча за кількістю оцінок він не завжди лідирує. Важливо не лише скільки користувачів оцінило фільм, а хто саме його оцінив і які інші фільми ці користувачі також оцінили високо.
+У нашому графі ребро CO_RATED з'єднує два фільми, якщо одні й ті самі активні користувачі оцінили обидва на ≥4. Тому високий PageRank означає, що фільм часто з'являється разом з іншими популярними фільмами у вподобаннях активних користувачів — він є центральним вузлом у мережі спільних вподобань.
+Тобто це фільм, який дивляться люди з різноманітними смаками — не лише фанати одного жанру. У рекомендаційній системі такий фільм є ідеальною відправною точкою для пошуку схожих користувачів або нових рекомендацій.
