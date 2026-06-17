@@ -36,3 +36,48 @@ MATCH ()-[co:CO_RATED]-() DELETE co;
 
 // Part 2
 
+// Крок 1: матеріалізуємо ребра користувач-користувач через спільні фільми
+MATCH (u1:User)-[r1:RATED]->(m:Movie)<-[r2:RATED]-(u2:User)
+WHERE r1.rating = 5 AND r2.rating = 5 AND id(u1) < id(u2)
+WITH u1, u2, count(m) AS weight
+WITH u1, u2, weight
+ORDER BY weight DESC
+LIMIT 5000
+MERGE (u1)-[sim:SIMILAR]-(u2)
+SET sim.weight = weight;
+
+// Крок 2: створюємо проєкцію
+CALL gds.graph.project(
+  'userSimilarity',
+  'User',
+  { SIMILAR: { orientation: 'UNDIRECTED', properties: 'weight' } }
+)
+YIELD graphName, nodeCount, relationshipCount;
+
+// Крок 3: запускаємо Louvain для виявлення спільнот
+CALL gds.louvain.stream('userSimilarity', {
+  relationshipWeightProperty: 'weight'
+})
+YIELD nodeId, communityId
+WITH gds.util.asNode(nodeId) AS user, communityId
+RETURN communityId, count(user) AS communitySize
+ORDER BY communitySize DESC
+LIMIT 10;
+
+// Крок 4: визначаємо топ-3 жанри для кожної спільноти
+CALL gds.louvain.stream('userSimilarity', {
+  relationshipWeightProperty: 'weight'
+})
+YIELD nodeId, communityId
+WITH gds.util.asNode(nodeId) AS user, communityId
+WHERE communityId IN [1284, 3390, 5099, 4488]
+MATCH (user)-[r:RATED]->(m:Movie)<-[:HAS_GENRE]-(g:Genre)
+WHERE r.rating >= 4
+WITH communityId, g.name AS genre, count(*) AS total
+ORDER BY communityId, total DESC
+WITH communityId, collect({genre: genre, total: total})[0..3] AS topGenres
+RETURN communityId, topGenres;
+
+// Крок 5: видаляємо проєкцію та тимчасові ребра
+CALL gds.graph.drop('userSimilarity');
+MATCH ()-[sim:SIMILAR]-() DELETE sim;
