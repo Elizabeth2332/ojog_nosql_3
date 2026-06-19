@@ -40,4 +40,5 @@ ORDER BY recommendedBy DESC LIMIT 10;
 MATCH path = shortestPath(
   (u1:User {userId: 1})-[:RATED*..10]-(u2:User {userId: 500})
 )
+WHERE all(n IN nodes(path) WHERE n:User OR n:Movie)
 RETURN path, length(path) AS pathLength;
