@@ -86,3 +86,6 @@ ORDER BY communitySize DESC;
 // Крок 5: видаляємо проєкцію та тимчасові ребра
 CALL gds.graph.drop('userSimilarity');
 MATCH ()-[sim:SIMILAR]-() DELETE sim;
+
+//Part 3 (5.3) Найкоротший шлях між користувачами
+
