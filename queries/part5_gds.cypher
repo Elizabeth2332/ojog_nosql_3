@@ -87,5 +87,56 @@ ORDER BY communitySize DESC;
 CALL gds.graph.drop('userSimilarity');
 MATCH ()-[sim:SIMILAR]-() DELETE sim;
 
+
 //Part 3 (5.3) Найкоротший шлях між користувачами
 
+// Проєкція потрібна та сама, що і для Louvain — пересотворіть, якщо видалили
+// (rating = 5 замість >= 4 — дозволений фолбек з умови завдання; >= 4 спричинив
+//  WebSocket connection failure, перевірка підтвердила 0 створених ребер)
+MATCH (u1:User)-[r1:RATED]->(m:Movie)<-[r2:RATED]-(u2:User)
+WHERE r1.rating = 5 AND r2.rating = 5 AND id(u1) < id(u2)
+WITH u1, u2, count(m) AS weight
+WITH u1, u2, weight
+ORDER BY weight DESC
+LIMIT 50000
+MERGE (u1)-[sim:SIMILAR]-(u2)
+SET sim.weight = weight;
+
+CALL gds.graph.project(
+  'userGraph',
+  'User',
+  { SIMILAR: { orientation: 'UNDIRECTED', properties: 'weight' } }
+)
+YIELD graphName, nodeCount, relationshipCount;
+
+// Крок 3a: Дейкстра для однієї обраної пари користувачів
+MATCH (source:User {userId: 4277}), (target:User {userId: 1285})
+CALL gds.shortestPath.dijkstra.stream('userGraph', {
+  sourceNode: source,
+  targetNode: target,
+  relationshipWeightProperty: 'weight'
+})
+YIELD totalCost, nodeIds, path
+RETURN
+  totalCost,
+  size(nodeIds) AS nodeCount,
+  [nodeId IN nodeIds | gds.util.asNode(nodeId).userId] AS userPath,
+  path;
+
+// Крок 3b: те саме для кількох інших пар, щоб оцінити "тісноту світу"
+UNWIND [[4277,1285],[4277,3391],[4277,5100],[1285,3391],[3391,5100]] AS pair
+MATCH (source:User {userId: pair[0]}), (target:User {userId: pair[1]})
+CALL gds.shortestPath.dijkstra.stream('userGraph', {
+  sourceNode: source,
+  targetNode: target,
+  relationshipWeightProperty: 'weight'
+})
+YIELD totalCost, nodeIds
+RETURN
+  pair[0] AS user1,
+  pair[1] AS user2,
+  size(nodeIds) AS nodeCount,
+  size(nodeIds) - 1 AS pathLength;
+
+CALL gds.graph.drop('userGraph');
+MATCH ()-[sim:SIMILAR]-() DELETE sim;
